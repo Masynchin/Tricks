@@ -67,7 +67,7 @@ private def lastId(updates: List[Update]): Option[Long] =
   updates.map(_.updateId).maxOption
 ~~~
 
-Another solution provided by @ivan-klass is to use `lastOption` (another method ending with `-Option`). It works because `updates` is pre-sorted, but is context-dependent change, so it is not a shame not to notice such optimization.
+Another solution [provided](https://github.com/augustjune/canoe/pull/463#discussion_r1212093968) by [@ivan-klass](https://github.com/ivan-klass) is to use `lastOption` (another method ending with `-Option`). It works because `updates` is pre-sorted, but is context-dependent change, so it is not a shame not to notice such optimization.
 
 ~~~scala
 private def lastId(updates: List[Update]): Option[Long] =

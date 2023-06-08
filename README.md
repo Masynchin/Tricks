@@ -16,6 +16,7 @@ Here is the [example](./scala.md#use-for-comprehension).
 
 The refactorings are stored in the file of their language. Check the list of available languages:
 
+- [Elixir](./elixir.md)
 - [Rust](./rust.md)
 - [Scala](./scala.md)
 

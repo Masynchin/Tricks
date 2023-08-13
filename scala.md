@@ -75,3 +75,58 @@ private def lastId(updates: List[Update]): Option[Long] =
 ~~~
 
 It is, in fact, optimization, because it doesn't allocate new list. Whereas our previous solution first uses `map`, which returns new list, and secondly `maxOption` to return `Option`, the new solution returns `Option` right after `lastOption`, and `map` applies to that `Option`, and not to a list.
+
+## `Stream` methods
+
+[Source](https://github.com/vpavkin/telegram-bot-fs2/blob/0940a28505842dfd0ef0310a2e83af96d377b6cd/src/main/scala/ru/pavkin/telegram/todolist/TodoListBot.scala#L31-L34)
+
+~~~scala
+private def pollCommands: Stream[F, BotCommand] = for {
+    update <- api.pollUpdates(0)
+    chatIdAndMessage <- Stream.emits(update.message.flatMap(a => a.text.map(a.chat.id -> _)).toSeq)
+  } yield BotCommand.fromRawMessage(chatIdAndMessage._1, chatIdAndMessage._2)
+~~~
+
+Because of the usage of `filterMap`, `map`, and `toSeq`, we can figure out that `update.message` and `message.text` are of type of `Option`.
+
+First of all, let's use `fromOption` constuctor for `Stream`, instead of `Stream.emits(_.toSeq)`.
+
+~~~scala
+private def pollCommands: Stream[F, BotCommand] = for {
+    update <- api.pollUpdates(0)
+    chatIdAndMessage <- Stream.fromOption[F](update.message.flatMap(a => a.text.map(a.chat.id -> _)))
+  } yield BotCommand.fromRawMessage(chatIdAndMessage._1, chatIdAndMessage._2)
+~~~
+
+Then, apply the same technique to `update.message`.
+
+~~~scala
+private def pollCommands: Stream[F, BotCommand] = for {
+    update <- api.pollUpdates(0)
+    message <- Stream.fromOption[F](update.message)
+    chatIdAndMessage <- Stream.fromOption[F](message.text.map(message.chat.id -> _))
+  } yield BotCommand.fromRawMessage(chatIdAndMessage._1, chatIdAndMessage._2)
+~~~
+
+Consider `message.text.map(message.chat.id -> _)`. Here we have `message.text` which is `Option[String]`, and `message.chat.id` which is `Int`. This code creates `Option[(Int, String)]`.
+
+Instead of `.map(_ -> _)` we can use [`tupleLeft`](https://typelevel.org/cats/nomenclature.html#functor) method, provided for Option by [cats](https://github.com/typelevel/cats).
+
+~~~scala
+private def pollCommands: Stream[F, BotCommand] = for {
+    update <- api.pollUpdates(0)
+    message <- Stream.fromOption[F](update.message)
+    chatIdAndMessage <- Stream.fromOption[F](message.text tupleLeft message.chat.id)
+  } yield BotCommand.fromRawMessage(chatIdAndMessage._1, chatIdAndMessage._2)
+~~~
+
+Next, let's use [`mapFilter`](https://github.com/typelevel/fs2/blob/3c93811b7f8d367eb23b02456cd6b18dbaec9962/core/shared/src/main/scala/fs2/Stream.scala#L5339), which would allow us to use chain of `Stream` operators, instead of `for`-comprehension.
+
+~~~scala
+private def pollCommands: Stream[F, BotCommand] =
+  api
+    .pollUpdates(0)
+    .mapFilter(_.message)
+    .mapFilter(m => m.text tupleLeft m.chat.id)
+    .map(BotCommand.fromRawMessage(_, _))
+~~~

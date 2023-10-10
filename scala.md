@@ -176,3 +176,132 @@ bot
   .toList
   .map(texts => assert(texts == message.map(_._1)))
 ~~~
+
+## Get rid of `Applicative[F].unit`
+
+[Source](https://github.com/augustjune/canoe/blob/0930adf20a20462f7c4564fc8132d6038720b98d/examples/src/main/scala/samples/CallbackHandling.scala#L43-L55)
+
+~~~scala
+def answerCallbacks[F[_]: Monad: TelegramClient]: Pipe[F, Update, Update] =
+  _.evalTap {
+    case CallbackButtonSelected(_, query) =>
+      query.data match {
+        case Some(cbd) =>
+          for {
+            _ <- query.message.traverse(_.chat.send(cbd))
+            _ <- query.finish
+          } yield ()
+        case _ => Applicative[F].unit
+      }
+    case _ => Applicative[F].unit
+  }
+~~~
+
+This functions instantiates `Pipe`, which is anonymous function on `Stream`.
+Therefore, we can operate with all the methods that `Stream` have.
+
+There is two `Applicative[F].unit` calls, and it is probably can be replaced
+by other, more descriptive operations. Let's see if we can.
+
+First `Applicative[F].unit` called when our input `Stream` emits not a
+`CallbackButtonSelected` event. In other words, we do nothing if event
+is not a callback. Can we just filter out non-callbacks from input stream?
+Yes, we can do it with `collect` method.
+
+~~~scala
+def answerCallbacks[F[_]: Monad: TelegramClient]: Pipe[F, Update, Update] =
+  _
+    .collect { case CallbackButtonSelected(_, query) => query }
+    .evalTap { query =>
+      query.data match {
+        case Some(cbd) =>
+          for {
+            _ <- query.message.traverse(_.chat.send(cbd))
+            _ <- query.finish
+          } yield ()
+        case _ => Applicative[F].unit
+      }
+    }
+~~~
+
+Let's explicitly put `None` as the second arm to `Some(cbd)`.
+
+~~~scala
+def answerCallbacks[F[_]: Monad: TelegramClient]: Pipe[F, Update, Update] =
+  _
+    .collect { case CallbackButtonSelected(_, query) => query }
+    .evalTap { query =>
+      query.data match {
+        case Some(cbd) =>
+          for {
+            _ <- query.message.traverse(_.chat.send(cbd))
+            _ <- query.finish
+          } yield ()
+        case None => Applicative[F].unit
+      }
+    }
+~~~
+
+The second `Applicative[F].unit` is called when callback data is `None`.
+
+We can't use the same trick with `collect` method to filter out `None`s,
+as we have to keep both `query` and `query.data` variables. The easiest way
+to keep them both is to combine them into single `Option` and only then use
+`collect`. How we would do it, if query is scalar, and query.data is `Option`?
+Using the `tupleLeft`, as it was used in [this trick](#stream-methods).
+
+~~~scala
+def answerCallbacks[F[_]: Monad: TelegramClient]: Pipe[F, Update, Update] =
+  _
+    .collect { case CallbackButtonSelected(_, query) => query }
+    .map { query => query.data tupleLeft query }
+    .collect { case Some(query, cbd) => (query, cbd) }
+    .evalTap { (query, cbd) =>
+      for {
+        _ <- query.message.traverse(_.chat.send(cbd))
+        _ <- query.finish
+      } yield ()
+    }
+~~~
+
+Also, there is method that both transforms and filters `Some`s.
+It is called `mapFilter`.
+ 
+~~~scala
+def answerCallbacks[F[_]: Monad: TelegramClient]: Pipe[F, Update, Update] =
+  _
+    .collect { case CallbackButtonSelected(_, query) => query }
+    .mapFilter { query => query.data tupleLeft query }
+    .evalTap { (query, cbd) =>
+      for {
+        _ <- query.message.traverse(_.chat.send(cbd))
+        _ <- query.finish
+      } yield ()
+    }
+~~~
+
+This is already pretty good, but we can replace for-comprehension inside
+`evalTap` with `Apply` transforms.
+
+~~~scala
+def answerCallbacks[F[_]: Monad: TelegramClient]: Pipe[F, Update, Update] =
+  _
+    .collect { case CallbackButtonSelected(_, query) => query }
+    .mapFilter { query => query.data tupleLeft query }
+    .evalTap { (query, cbd) =>
+      query.message.traverse(_.chat.send(cbd)) *> query.finish.void
+    }
+~~~
+
+We now can loosen typeclasses constraints from `Monad` to `Applicative`,
+since we didn't use `FlatMap` instance.
+
+~~~scala
+def answerCallbacks[F[_]: Applicative: TelegramClient]: Pipe[F, Update, Update] =
+  _
+    .collect { case CallbackButtonSelected(_, query) => query }
+    .mapFilter { query => query.data tupleLeft query }
+    .evalTap { (query, cbd) =>
+      query.message.traverse(_.chat.send(cbd)) *> query.finish.void
+    }
+~~~

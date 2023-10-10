@@ -130,3 +130,49 @@ private def pollCommands: Stream[F, BotCommand] =
     .mapFilter(m => m.text tupleLeft m.chat.id)
     .map(BotCommand.fromRawMessage(_, _))
 ~~~
+
+## Needless for-comprehension
+
+[Source](https://github.com/augustjune/canoe/blob/0930adf20a20462f7c4564fc8132d6038720b98d/core/shared/src/test/scala/canoe/api/BotSpec.scala#L34-L38)
+
+~~~scala
+for
+  updates <- bot.updates.compile.toList
+  texts = updates.collect { case MessageReceived(_, m: TextMessage) => m.text }
+  asr <- IO(assert(texts == messages.map(_._1)))
+yield asr
+~~~
+
+Here we have for-comprehension, but it doesn't really compose `IO`s.
+Look at the numerated lines:
+
+~~~scala
+1  =>  updates <- bot.updates.compile.toList
+2  =>  texts = updates.collect { case MessageReceived(_, m: TextMessage) => m.text }
+3  =>  asr <- IO(assert(texts == messages.map(_._1)))
+~~~
+
+On the line 2 we do variable assigning, and on the line 3 singlehandedly
+wrap expression in `IO`. Do we really need for-comprehension here?
+
+Here is the version without for-comprehension:
+
+~~~scala
+bot
+  .updates.compile.toList
+  .map(_.collect { case MessageReceived(_, m: TextMessage) => m.text })
+  .map(texts => assert(texts == messages.map(_._1)))
+~~~
+
+Looks cleaner, but we can do even better. Consider first `map` call.
+We apply `map` in order to `collect` message texts from `IO[List]`.
+But we can use `collect` earlier directly on `Stream`.
+
+~~~scala
+bot
+  .updates
+  .collect { case MessageReceived(_, m: TextMessage) => m.text }
+  .compile
+  .toList
+  .map(texts => assert(texts == message.map(_._1)))
+~~~

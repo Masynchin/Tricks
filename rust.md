@@ -177,3 +177,30 @@ pub fn last_modified(&self) -> Option<DateTime<Utc>> {
         .max()
 }
 ~~~
+
+## Clear your intensions
+
+[Source](https://github.com/CanyonTurtle/kittygame/blob/ef3ede8042f941c94eafb4bdc77e7a9c2527c521/src/lib.rs#L522-L528)
+
+~~~rust
+let mut current_found_npcs = 0;
+for npc in game_state.npcs.borrow().iter() {
+    current_found_npcs += match npc.following_i {
+        None => 0,
+        Some(_) => 1,
+    }
+}
+~~~
+
+This code counts *something*. This value conuts all the `npc.following_i`s
+that is `Some`. How we make it more clear? By filtering out all the `None`s
+and counting resulting array.
+
+~~~rust
+let current_found_npcs = game_state
+    .npcs
+    .borrow()
+    .iter()
+    .filter_map(|npc| npc.following_i)
+    .count();
+~~~

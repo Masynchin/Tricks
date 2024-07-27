@@ -349,6 +349,67 @@ fa.flatMap(f).flatMap(a => as(g(a), a)))
 fa.flatMap(f).flatTap(g)
 ~~~
 
+<details>
+
+<summary>Coq proofs</summary>
+
+Thanks to Aly (@s5bug) for Coq-based proof:
+
+~~~coq
+Require Import Coq.Program.Basics.
+
+Class monad (F : Type -> Type) := {
+  pure : forall { A }, A -> F A ;
+  flatMap : forall { A B }, (A -> F B) -> (F A -> F B) ;
+  flatMap_assoc : forall { A B C } (g : B -> F C) (f : A -> F B), flatMap (compose (flatMap g) f) = compose (flatMap g) (flatMap f)
+}.
+
+Definition flatTap { F } { mf : monad F } { A B } (f : A -> F B) (fa : F A) : F A :=
+  flatMap (fun a => flatMap (fun _ => pure a) (f a)) fa.
+
+Theorem flatTap_assoc : forall { F } { mf : monad F }
+  { A B C } (g : B -> F C) (f : A -> F B),
+  flatMap (compose (flatTap g) f) = compose (flatTap g) (flatMap f).
+Proof.
+  intros.
+  unfold flatTap.
+  rewrite -> flatMap_assoc.
+  unfold compose.
+  reflexivity.
+Qed.
+~~~
+
+That proof requires `Monad`, because there is no `map` implementation
+(which comes from unfolding `as` part of `flatTap`) for `FlatMap`.
+
+If your `FlatMap` has `map` implementation, you can loosen that proof:
+
+~~~coq
+Require Import Coq.Program.Basics.
+
+Class flatMapClass (F : Type -> Type) := {
+  map: forall { A B }, (A -> B) -> (F A -> F B) ;
+  flatMap : forall { A B }, (A -> F B) -> (F A -> F B) ;
+  flatMap_assoc : forall { A B C } (g : B -> F C) (f : A -> F B), flatMap (compose (flatMap g) f) = compose (flatMap g) (flatMap f)
+}.
+
+Definition flatTap { F } { mf : flatMapClass F } { A B } (f : A -> F B) (fa : F A) : F A :=
+  flatMap (fun a => map (fun _ => a) (f a)) fa.
+
+Theorem flatTap_assoc : forall { F } { mf : flatMapClass F }
+  { A B C } (g : B -> F C) (f : A -> F B),
+  flatMap (compose (flatTap g) f) = compose (flatTap g) (flatMap f).
+Proof.
+  intros.
+  unfold flatTap.
+  rewrite -> flatMap_assoc.
+  unfold compose.
+  reflexivity.
+Qed.
+~~~
+
+</details>
+
 Hoorah, we have proved that:
 
 ~~~scala

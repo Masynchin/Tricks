@@ -353,7 +353,7 @@ fa.flatMap(f).flatTap(g)
 
 <summary>Coq proofs</summary>
 
-Thanks to Aly (@s5bug) for Coq-based proof:
+Thanks to Aly ([@s5bug](https://github.com/s5bug)) for Coq-based proof:
 
 ~~~coq
 Require Import Coq.Program.Basics.

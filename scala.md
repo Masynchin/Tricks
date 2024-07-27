@@ -305,3 +305,59 @@ def answerCallbacks[F[_]: Applicative: TelegramClient]: Pipe[F, Update, Update] 
       query.message.traverse(_.chat.send(cbd)) *> query.finish.void
     }
 ~~~
+
+## Use laws
+
+[Source](https://github.com/scala-steward-org/scala-steward/blob/797c6f5c5ab789b766f9b4ec32d38b33367fea70/modules/core/src/main/scala/org/scalasteward/core/persistence/KeyValueStore.scala#L30-L31)
+
+~~~scala
+final def modifyF(key: K)(f: Option[V] => F[Option[V]])(implicit F: FlatMap[F]): F[Option[V]] =
+  get(key).flatMap(maybeValue => f(maybeValue).flatTap(set(key, _)))
+~~~
+
+If we abstract it a little, we ca see following pattern:
+
+~~~scala
+fa.flatMap(a => f(a).flatTap(g))
+~~~
+
+It may look familiar to those, who knows the `FlatMap` laws.
+In paticular, the [associativity law](https://github.com/typelevel/cats/blob/aee37023439fddadfcd1a3c1a7600f9cbfbfe796/laws/src/main/scala/cats/laws/FlatMapLaws.scala#L36-L37):
+
+~~~scala
+fa.flatMap(a => f(a).flatMap(g)) <-> fa.flatMap(f).flatMap(g)
+~~~
+
+If this works, does the following work also?
+
+~~~scala
+fa.flatMap(a => f(a).flatTap(g)) <-> fa.flatMap(f).flatTap(g)
+~~~
+
+Let's try to prove it:
+
+~~~scala
+fa.flatMap(a => f(a).flatTap(g))
+// Unfolding `flatTap` by its definition:
+// fa.flatTap(f) == fa.flatMap(a => as(f(a), a))
+fa.flatMap(a => f(a).flatMap(a => as(g(a), a)))
+// Using `flatMapAssociativity` law
+// fa.flatMap(a => f(a).flatMap(g)) <-> fa.flatMap(f).flatMap(g)
+// Where `a => as(g(a), a)` would be `g` from the law
+fa.flatMap(f).flatMap(a => as(g(a), a)))
+// Folding `flat(a => as(g(a), a))` to `flatTap(g)`
+fa.flatMap(f).flatTap(g)
+~~~
+
+Hoorah, we have proved that:
+
+~~~scala
+fa.flatMap(a => f(a).flatTap(g)) <-> fa.flatMap(f).flatTap(g)
+~~~
+
+Now we have the ~audacity~ justification for the rewrite of `modifyF`:
+
+~~~scala
+final def modifyF(key: K)(f: Option[V] => F[Option[V]])(implicit F: FlatMap[F]): F[Option[V]] =
+  get(key).flatMap(f).flatTap(set(key, _))
+~~~

@@ -1,10 +1,11 @@
 # Tricks
 
-The list of little refactorings.
+The list of small context-free refactorings.
 
-## What is refactoring?
+## What is context-free refactoring?
 
-Refactoring here is the small set of changes to a small amount code that highly improves readability, and/or perfomance.
+- "Context-free" means that you can derive all the types for refactoring straight from the given code sample.
+- "Refactoring" is a small set of changes to a code that highly improves readability, and/or perfomance.
 
 ## How to format a refactoring?
 

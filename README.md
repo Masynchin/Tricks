@@ -22,4 +22,4 @@ The refactorings are stored in the file of their language. Check the list of ava
 
 ## What languages it is targetted for?
 
-All of them! If there is no refactorings of your language, don't be shy to PR it first.
+All of them! If there is no refactorings of your language, don't be shy to PR!

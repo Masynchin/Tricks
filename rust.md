@@ -204,3 +204,73 @@ let current_found_npcs = game_state
     .filter_map(|npc| npc.following_i)
     .count();
 ~~~
+
+## Replace pattern matching with combinators
+
+[Source](https://github.com/seanmonstar/warp/blob/1cbf029b1867505e1e6f75ae9674613ae3533710/src/filters/cookie.rs#L38-L45)
+
+~~~rust
+header::optional2().map(move |opt: Option<Cookie>| {
+    let cookie = opt.and_then(|cookie| cookie.get(name).map(|x| T::from_str(x)));
+    match cookie {
+        Some(Ok(t)) => Some(t),
+        Some(Err(_)) => None,
+        None => None,
+    }
+})
+~~~
+
+First, let's replace lambda function with trait method:
+
+~~~rust
+header::optional2().map(move |opt: Option<Cookie>| {
+    let cookie = opt.and_then(|cookie| cookie.get(name).map(T::from_str));
+    match cookie {
+        Some(Ok(t)) => Some(t),
+        Some(Err(_)) => None,
+        None => None,
+    }
+})
+~~~
+
+Then, let's look closer at the pattern matching. We are flatteting
+`Option<Result<T, _>>` to `<Option<T>>`. It would be easier to refactor
+if we would flat the `Option<Option<T>>` instead. But we can transform
+`Result<T, _>` to `Option<T>` with [`Result::ok`](https://doc.rust-lang.org/std/result/enum.Result.html#method.ok).
+
+~~~rust
+header::optional2().map(move |opt: Option<Cookie>| {
+    let cookie = opt
+        .and_then(|cookie| cookie.get(name).map(T::from_str))
+        .map(Result::ok);
+
+    match cookie {
+        Some(Some(t)) => Some(t),
+        Some(None) => None,
+        None => None,
+    }
+})
+~~~
+
+Now, we can flat out nested `Option` with [`Option::flatten`](https://doc.rust-lang.org/std/option/enum.Option.html#method.flatten),
+instead of using pattern matching.
+
+~~~rust
+header::optional2().map(move |opt: Option<Cookie>| {
+    opt
+        .and_then(|cookie| cookie.get(name).map(T::from_str))
+        .map(Result::ok)
+        .flatten()
+})
+~~~
+
+But we can do better. Does `map + flatten` reminds you of something?
+It is exactly how `flat_map` (or Rust's `and_then`) implemented.
+
+~~~rust
+header::optional2().map(move |opt: Option<Cookie>| {
+    opt
+        .and_then(|cookie| cookie.get(name).map(T::from_str))
+        .and_then(Result::ok)
+})
+~~~
